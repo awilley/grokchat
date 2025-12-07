@@ -29,15 +29,18 @@ db.exec(`
     content TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     tags TEXT,
+    attachments TEXT,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
   );
 
   CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
+    description TEXT,
     icon TEXT NOT NULL,
     accent TEXT NOT NULL,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS category_items (
@@ -55,6 +58,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
   CREATE INDEX IF NOT EXISTS idx_category_items_category ON category_items(category_id);
 `);
+
+// Migration: Add pinned column if it doesn't exist
+try {
+    db.prepare('SELECT pinned FROM categories LIMIT 1').get();
+} catch {
+    db.exec('ALTER TABLE categories ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    console.log('[DB] Added pinned column to categories table');
+}
+
+// Migration: Add description column if it doesn't exist
+try {
+    db.prepare('SELECT description FROM categories LIMIT 1').get();
+} catch {
+    db.exec('ALTER TABLE categories ADD COLUMN description TEXT');
+    console.log('[DB] Added description column to categories table');
+}
+
+// Migration: Add attachments column to messages if it doesn't exist
+try {
+    db.prepare('SELECT attachments FROM messages LIMIT 1').get();
+} catch {
+    db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT');
+    console.log('[DB] Added attachments column to messages table');
+}
 
 // Session operations
 export function getOrCreateSession(userId: string): string {
@@ -81,17 +108,19 @@ export interface DBMessage {
     content: string;
     timestamp: string;
     tags: string | null;
+    attachments: string | null;
 }
 
 export function insertMessage(msg: Omit<DBMessage, 'id'>): string {
     const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    db.prepare('INSERT INTO messages (id, session_id, role, content, timestamp, tags) VALUES (?, ?, ?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO messages (id, session_id, role, content, timestamp, tags, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         id,
         msg.session_id,
         msg.role,
         msg.content,
         msg.timestamp,
-        msg.tags
+        msg.tags,
+        msg.attachments
     );
     touchSession(msg.session_id);
     return id;
@@ -109,9 +138,11 @@ export function getRecentMessages(sessionId: string, count = 20): DBMessage[] {
 export interface DBCategory {
     id: string;
     title: string;
+    description: string | null;
     icon: string;
     accent: string;
     sort_order: number;
+    pinned: number;
 }
 
 export interface DBCategoryItem {
@@ -126,14 +157,35 @@ export interface DBCategoryItem {
 
 export function upsertCategory(cat: DBCategory) {
     db.prepare(`
-        INSERT INTO categories (id, title, icon, accent, sort_order)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO categories (id, title, description, icon, accent, sort_order, pinned)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
+            description = excluded.description,
             icon = excluded.icon,
             accent = excluded.accent,
-            sort_order = excluded.sort_order
-    `).run(cat.id, cat.title, cat.icon, cat.accent, cat.sort_order);
+            sort_order = excluded.sort_order,
+            pinned = excluded.pinned
+    `).run(cat.id, cat.title, cat.description ?? null, cat.icon, cat.accent, cat.sort_order, cat.pinned ?? 0);
+}
+
+export function updateCategoryDescription(categoryId: string, description: string) {
+    db.prepare('UPDATE categories SET description = ? WHERE id = ?').run(description, categoryId);
+}
+
+export function updateCategoryIcon(categoryId: string, icon: string) {
+    db.prepare('UPDATE categories SET icon = ? WHERE id = ?').run(icon, categoryId);
+}
+
+export function updateCategoryAccent(categoryId: string, accent: string) {
+    db.prepare('UPDATE categories SET accent = ? WHERE id = ?').run(accent, categoryId);
+}
+
+export function toggleCategoryPinned(categoryId: string): boolean {
+    const current = db.prepare('SELECT pinned FROM categories WHERE id = ?').get(categoryId) as { pinned: number } | undefined;
+    const newPinned = current?.pinned ? 0 : 1;
+    db.prepare('UPDATE categories SET pinned = ? WHERE id = ?').run(newPinned, categoryId);
+    return newPinned === 1;
 }
 
 export function upsertCategoryItem(item: DBCategoryItem) {
@@ -164,6 +216,19 @@ export function deleteCategoryItem(itemId: string) {
 
 export function deleteCategory(categoryId: string) {
     db.prepare('DELETE FROM categories WHERE id = ?').run(categoryId);
+}
+
+export function deleteMessage(messageId: string) {
+    db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
+}
+
+export function deleteMessages(messageIds: string[]) {
+    const placeholders = messageIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM messages WHERE id IN (${placeholders})`).run(...messageIds);
+}
+
+export function updateMessageTags(messageId: string, tags: string | null) {
+    db.prepare('UPDATE messages SET tags = ? WHERE id = ?').run(tags, messageId);
 }
 
 export default db;

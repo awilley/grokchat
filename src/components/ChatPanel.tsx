@@ -1,26 +1,85 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent, type ComponentType } from 'react';
 import clsx from 'clsx';
-import { BrainCircuit, ShieldHalf, Sparkles, ChevronDown, Search, X } from 'lucide-react';
-import type { ChatMessage } from '../types/chat';
+import {
+    FileText,
+    ImageIcon,
+    MessageSquare,
+    ChevronDown,
+    Search,
+    X,
+    Hash,
+    Sparkles,
+    Rocket,
+    Aperture,
+    CircuitBoard,
+    Compass,
+    Share2,
+    Target,
+    Brain,
+    Users,
+    Zap,
+    Globe,
+    Shield,
+    Database,
+    Activity,
+    Palette
+} from 'lucide-react';
+import type { ChatMessage, AttachedFile } from '../types/chat';
 import type { ContextCategory, ContextCategoryItem } from './Sidebar';
 import ChatMessageList from './ChatMessageList';
 import ChatInput from './ChatInput';
+
+// Available icons for category customization
+const availableIcons: { name: string; component: ComponentType<{ className?: string }> }[] = [
+    { name: 'Sparkles', component: Sparkles },
+    { name: 'Rocket', component: Rocket },
+    { name: 'Aperture', component: Aperture },
+    { name: 'CircuitBoard', component: CircuitBoard },
+    { name: 'Compass', component: Compass },
+    { name: 'Share2', component: Share2 },
+    { name: 'Target', component: Target },
+    { name: 'Brain', component: Brain },
+    { name: 'Users', component: Users },
+    { name: 'Zap', component: Zap },
+    { name: 'Globe', component: Globe },
+    { name: 'Shield', component: Shield },
+    { name: 'FileText', component: FileText },
+    { name: 'Database', component: Database },
+    { name: 'Activity', component: Activity }
+];
+
+// Available color themes
+const availableAccents = [
+    { name: 'Purple Blue', value: 'from-grokPurple to-grokBlue' },
+    { name: 'Pink Purple', value: 'from-grokPink to-grokPurple' },
+    { name: 'Blue Cyan', value: 'from-grokBlue to-cyan-400' },
+    { name: 'Orange Red', value: 'from-orange-500 to-red-500' },
+    { name: 'Green Teal', value: 'from-emerald-500 to-teal-500' },
+    { name: 'Violet Indigo', value: 'from-violet-500 to-indigo-500' },
+    { name: 'Rose Pink', value: 'from-rose-500 to-pink-500' },
+    { name: 'Amber Yellow', value: 'from-amber-500 to-yellow-500' }
+];
 
 interface ChatPanelProps {
     title: string;
     subtitle: string;
     messages: ChatMessage[];
-    onSendMessage: (content: string, tags: string[]) => void;
+    onSendMessage: (content: string, tags: string[], attachments?: AttachedFile[]) => void;
+    onDeleteMessage: (messageId: string) => void;
     isAssistantTyping: boolean;
     activeCategory: ContextCategory | null;
     isGrokConnected: boolean;
     statusMessage: string | null;
     contextCategories: ContextCategory[];
+    recentContexts: ContextCategory[];
     composerTags: string[];
     onToggleComposerTag: (tagId: string) => void;
     onResetComposerTags: () => void;
     onUpdateCategoryItems: (categoryId: string, items: ContextCategoryItem[]) => void;
     onRenameCategory: (categoryId: string, title: string) => void;
+    onUpdateDescription: (categoryId: string, description: string) => void;
+    onUpdateIcon: (categoryId: string, iconName: string) => void;
+    onUpdateAccent: (categoryId: string, accent: string) => void;
 }
 
 export default function ChatPanel({
@@ -28,24 +87,59 @@ export default function ChatPanel({
     subtitle,
     messages,
     onSendMessage,
+    onDeleteMessage,
     isAssistantTyping,
     activeCategory,
     isGrokConnected,
     statusMessage,
     contextCategories,
+    recentContexts,
     composerTags,
     onToggleComposerTag,
     onResetComposerTags,
     onUpdateCategoryItems,
-    onRenameCategory
+    onRenameCategory,
+    onUpdateDescription,
+    onUpdateIcon,
+    onUpdateAccent
 }: ChatPanelProps) {
     const signalContext = activeCategory ?? contextCategories[0];
     const topSignals = useMemo<ContextCategoryItem[]>(() => signalContext?.items.slice(0, 3) ?? [], [signalContext]);
-    const statusDescription = isGrokConnected
-        ? 'Responses stream from Grok API.'
-        : statusMessage
-            ? 'Fell back to simulation while Grok reconnects.'
-            : 'Set VITE_GROK_API_KEY to enable live calls.';
+
+    // Compute thread stats
+    const threadStats = useMemo(() => {
+        const relevantMessages = activeCategory
+            ? messages.filter(m => m.role !== 'system' && m.tags?.includes(activeCategory.id))
+            : messages.filter(m => m.role !== 'system');
+
+        let fileCount = 0;
+        let imageCount = 0;
+        let totalChars = 0;
+
+        for (const msg of relevantMessages) {
+            totalChars += msg.content.length;
+            // Count file references (common patterns)
+            const fileMatches = msg.content.match(/\.(txt|pdf|doc|docx|csv|json|xml|md|py|js|ts|tsx|jsx|html|css)\b/gi);
+            if (fileMatches) fileCount += fileMatches.length;
+            // Count image references
+            const imageMatches = msg.content.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)\b/gi);
+            if (imageMatches) imageCount += imageMatches.length;
+        }
+
+        // Approximate token count (rough estimate: 4 chars per token)
+        const approxTokens = Math.round(totalChars / 4);
+        const contextDisplay = approxTokens >= 1000
+            ? `${(approxTokens / 1000).toFixed(1)}k tokens`
+            : `${approxTokens} tokens`;
+
+        return {
+            messageCount: relevantMessages.length,
+            fileCount,
+            imageCount,
+            contextDisplay
+        };
+    }, [messages, activeCategory]);
+
     const orderedMessages = useMemo(() => {
         const base = activeCategory
             ? messages.filter(message => {
@@ -207,7 +301,7 @@ export default function ChatPanel({
                                 aria-expanded={drawerOpen}
                             >
                                 <div className="flex flex-col">
-                                    <span className="text-[11px] uppercase tracking-[0.3em] text-white/50">Filtering</span>
+                                    <span className="text-[11px] uppercase tracking-[0.3em] text-white/50">Context Filtering</span>
                                     <p className="text-sm font-semibold text-white">
                                         {activeCategory ? activeCategory.title : 'All contexts'}
                                     </p>
@@ -282,12 +376,19 @@ export default function ChatPanel({
                     </div>
                 </div>
 
-                <ChatMessageList messages={visibleMessages} isAssistantTyping={isAssistantTyping} messageRefs={messageRefs} />
+                <ChatMessageList
+                    messages={visibleMessages}
+                    isAssistantTyping={isAssistantTyping}
+                    messageRefs={messageRefs}
+                    categories={contextCategories}
+                    onDeleteMessage={onDeleteMessage}
+                />
             </div>
             <ChatInput
                 onSend={onSendMessage}
                 disabled={isAssistantTyping}
-                contexts={contextCategories}
+                contexts={recentContexts}
+                allContexts={contextCategories}
                 selectedTags={composerTags}
                 onToggleTag={onToggleComposerTag}
                 onResetTags={onResetComposerTags}
@@ -315,34 +416,35 @@ export default function ChatPanel({
                 )}
             >
                 <div className="mx-auto w-full max-w-4xl">
-                    <div className="rounded-3xl border border-white/10 bg-secondary/95 shadow-2xl shadow-black/50 backdrop-blur-xl max-h-[calc(100vh-10rem)] overflow-y-auto">
+                    <div className="rounded-3xl border border-white/10 bg-secondary/95 shadow-2xl shadow-black/50 backdrop-blur-xl max-h-[calc(100vh-10rem)] overflow-visible">
                         <ContextDrawer
                             title={title}
                             subtitle={subtitle}
-                            statusDescription={statusDescription}
                             statusMessage={statusMessage}
-                            isGrokConnected={isGrokConnected}
                             topSignals={topSignals}
                             activeCategory={activeCategory}
                             onUpdateCategoryItems={onUpdateCategoryItems}
                             onRenameCategory={onRenameCategory}
+                            onUpdateDescription={onUpdateDescription}
+                            onUpdateIcon={onUpdateIcon}
+                            onUpdateAccent={onUpdateAccent}
                         />
-                        <div className="border-t border-white/5 bg-white/5 px-6 py-6">
+                        <div className="relative z-0 border-t border-white/5 bg-white/5 px-6 py-6">
                             <div className="grid gap-3 sm:grid-cols-3">
                                 <InsightCard
-                                    icon={<Sparkles className="h-5 w-5" />}
-                                    title="Autonomy"
-                                    value="Grok handles context curation"
+                                    icon={<MessageSquare className="h-5 w-5" />}
+                                    title="Messages"
+                                    value={`${threadStats.messageCount} in thread`}
                                 />
                                 <InsightCard
-                                    icon={<BrainCircuit className="h-5 w-5" />}
-                                    title="Reasoning"
-                                    value="Multi-hop reasoning enabled"
+                                    icon={<FileText className="h-5 w-5" />}
+                                    title="Files"
+                                    value={threadStats.fileCount > 0 ? `${threadStats.fileCount} referenced` : 'None referenced'}
                                 />
                                 <InsightCard
-                                    icon={<ShieldHalf className="h-5 w-5" />}
-                                    title="Guardrails"
-                                    value="Safety filters active"
+                                    icon={<Hash className="h-5 w-5" />}
+                                    title="Context Length"
+                                    value={threadStats.contextDisplay}
                                 />
                             </div>
                         </div>
@@ -362,32 +464,38 @@ interface InsightCardProps {
 interface ContextDrawerProps {
     title: string;
     subtitle: string;
-    statusDescription: string;
     statusMessage: string | null;
-    isGrokConnected: boolean;
     topSignals: ContextCategoryItem[];
     activeCategory: ContextCategory | null;
     onUpdateCategoryItems: (categoryId: string, items: ContextCategoryItem[]) => void;
     onRenameCategory: (categoryId: string, title: string) => void;
+    onUpdateDescription: (categoryId: string, description: string) => void;
+    onUpdateIcon: (categoryId: string, iconName: string) => void;
+    onUpdateAccent: (categoryId: string, accent: string) => void;
 }
 
 function ContextDrawer({
     title,
     subtitle,
-    statusDescription,
     statusMessage,
-    isGrokConnected,
     topSignals,
     activeCategory,
     onUpdateCategoryItems,
-    onRenameCategory
+    onRenameCategory,
+    onUpdateDescription,
+    onUpdateIcon,
+    onUpdateAccent
 }: ContextDrawerProps) {
     const canEdit = !!activeCategory;
     const [titleDraft, setTitleDraft] = useState(activeCategory?.title ?? title);
+    const [descriptionDraft, setDescriptionDraft] = useState(activeCategory?.description ?? subtitle);
+    const [showIconPicker, setShowIconPicker] = useState(false);
+    const [showColorPicker, setShowColorPicker] = useState(false);
 
     useEffect(() => {
         setTitleDraft(activeCategory?.title ?? title);
-    }, [activeCategory?.title, title]);
+        setDescriptionDraft(activeCategory?.description ?? subtitle);
+    }, [activeCategory?.title, activeCategory?.description, title, subtitle]);
 
     const handleDeleteSignal = (id: string) => {
         if (!activeCategory) return;
@@ -421,7 +529,21 @@ function ContextDrawer({
         onRenameCategory(activeCategory.id, trimmed);
     };
 
+    const commitDescription = () => {
+        if (!activeCategory) return;
+        const trimmed = descriptionDraft.trim();
+        setDescriptionDraft(trimmed);
+        onUpdateDescription(activeCategory.id, trimmed);
+    };
+
     const handleTitleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            (event.target as HTMLInputElement).blur();
+        }
+    };
+
+    const handleDescriptionKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === 'Enter') {
             event.preventDefault();
             (event.target as HTMLInputElement).blur();
@@ -436,7 +558,6 @@ function ContextDrawer({
 
             <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-10">
                 <div className="flex flex-col gap-2">
-                    <span className="text-xs uppercase tracking-[0.4em] text-white/50">Live Focus Mesh</span>
                     {canEdit ? (
                         <input
                             value={titleDraft}
@@ -448,25 +569,93 @@ function ContextDrawer({
                     ) : (
                         <h1 className="text-3xl font-semibold tracking-tight text-white">{title}</h1>
                     )}
-                    <p className="text-sm text-white/60">{subtitle}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/50">
-                        <span
-                            className={clsx(
-                                'inline-flex h-2 w-2 rounded-full shadow-md shadow-black/40',
-                                isGrokConnected ? 'bg-emerald-400 animate-pulse' : 'bg-grokPink/80'
-                            )}
-                            aria-hidden="true"
+                    {canEdit ? (
+                        <input
+                            value={descriptionDraft}
+                            onChange={event => setDescriptionDraft(event.target.value)}
+                            onBlur={commitDescription}
+                            onKeyDown={handleDescriptionKeyDown}
+                            placeholder="Add a description..."
+                            className="text-sm text-white/60 bg-transparent border-b border-transparent focus:border-white/40 focus:outline-none placeholder:text-white/30"
                         />
-                        <span className="uppercase tracking-[0.3em] text-white/45">
-                            {isGrokConnected ? 'Grok linked' : 'Simulation mode'}
-                        </span>
-                        <span className="text-white/60">{statusDescription}</span>
-                        {statusMessage && (
+                    ) : (
+                        <p className="text-sm text-white/60">{subtitle}</p>
+                    )}
+                    {canEdit && (
+                        <div className="mt-3 flex flex-wrap gap-2 relative z-[100]">
+                            {/* Icon Picker */}
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowIconPicker(!showIconPicker); setShowColorPicker(false); }}
+                                    className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
+                                >
+                                    {(() => {
+                                        const Icon = activeCategory.icon;
+                                        return <Icon className="h-4 w-4" />;
+                                    })()}
+                                    <span>Icon</span>
+                                </button>
+                                {showIconPicker && (
+                                    <div className="absolute left-0 top-full z-[200] mt-2 grid w-[220px] grid-cols-5 gap-2 rounded-2xl border border-white/15 bg-[#1a1a2e] p-3 shadow-2xl shadow-black/60 backdrop-blur-xl">
+                                        {availableIcons.map(({ name, component: IconComp }) => (
+                                            <button
+                                                key={name}
+                                                type="button"
+                                                onClick={() => {
+                                                    onUpdateIcon(activeCategory.id, name);
+                                                    setShowIconPicker(false);
+                                                }}
+                                                className="flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-white/5 transition hover:border-white/20 hover:bg-white/15"
+                                                title={name}
+                                            >
+                                                <IconComp className="h-4 w-4 text-white/80" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {/* Color Picker */}
+                            <div className="relative">
+                                <button
+                                    type="button"
+                                    onClick={() => { setShowColorPicker(!showColorPicker); setShowIconPicker(false); }}
+                                    className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
+                                >
+                                    <span className={clsx('h-4 w-4 rounded-full bg-gradient-to-br', activeCategory.accent)} />
+                                    <span>Color</span>
+                                </button>
+                                {showColorPicker && (
+                                    <div className="absolute left-0 top-full z-[200] mt-2 flex flex-col gap-1 rounded-2xl border border-white/15 bg-[#1a1a2e] p-2 shadow-2xl shadow-black/60 backdrop-blur-xl min-w-[180px]">
+                                        {availableAccents.map(({ name, value }) => (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                onClick={() => {
+                                                    onUpdateAccent(activeCategory.id, value);
+                                                    setShowColorPicker(false);
+                                                }}
+                                                className={clsx(
+                                                    'flex items-center gap-3 rounded-xl px-3 py-2 text-xs text-white/80 transition hover:bg-white/10',
+                                                    activeCategory.accent === value && 'bg-white/15 ring-1 ring-white/20'
+                                                )}
+                                            >
+                                                <span className={clsx('h-5 w-5 rounded-full bg-gradient-to-br shadow-inner', value)} />
+                                                <span className="font-medium">{name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                    {statusMessage && (
+                        <div className="mt-2">
                             <span className="rounded-full border border-grokPink/50 bg-grokPink/10 px-3 py-1 text-[11px] text-grokPink/80">
                                 {statusMessage}
                             </span>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center justify-between gap-3">

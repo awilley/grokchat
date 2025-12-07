@@ -13,6 +13,13 @@ import {
     upsertCategory,
     upsertCategoryItem,
     deleteCategoryItem,
+    deleteCategory,
+    deleteMessages,
+    updateMessageTags,
+    toggleCategoryPinned,
+    updateCategoryDescription,
+    updateCategoryIcon,
+    updateCategoryAccent,
     type DBMessage
 } from './db.ts';
 
@@ -31,10 +38,18 @@ interface ChatMessage {
     content: string;
 }
 
+interface AttachmentMeta {
+    name: string;
+    size: number;
+    type: 'text' | 'image' | 'pdf';
+    mimeType?: string;
+}
+
 interface ChatRequestBody {
     userId: string;
     messages: ChatMessage[];
     tags: string[];
+    attachments?: AttachmentMeta[];
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -56,7 +71,19 @@ app.post('/api/chat', async (req, res) => {
     const candidateMemories: MemoryAtom[] = [];
     const lowered = latestUser.content.toLowerCase();
 
-    if (lowered.includes('i prefer') || lowered.includes("i'd like") || lowered.includes('i like')) {
+    console.log('[Memory Heuristics] Checking message:', lowered);
+
+    // Preference patterns
+    if (
+        lowered.includes('i prefer') ||
+        lowered.includes("i'd like") ||
+        lowered.includes('i like') ||
+        lowered.includes("don't") ||
+        lowered.includes('do not') ||
+        lowered.includes('please always') ||
+        lowered.includes('please never') ||
+        lowered.includes('going forward')
+    ) {
         candidateMemories.push({
             text: `User preference: ${latestUser.content}`,
             type: 'preference',
@@ -64,7 +91,13 @@ app.post('/api/chat', async (req, res) => {
         });
     }
 
-    if (lowered.startsWith("i am ") || lowered.startsWith("i'm ")) {
+    // Profile patterns
+    if (
+        lowered.startsWith('i am ') ||
+        lowered.startsWith("i'm ") ||
+        lowered.includes('my name is') ||
+        lowered.includes('call me ')
+    ) {
         candidateMemories.push({
             text: `User profile note: ${latestUser.content}`,
             type: 'profile',
@@ -72,6 +105,7 @@ app.post('/api/chat', async (req, res) => {
         });
     }
 
+    // Goal patterns
     if (lowered.includes('working on') || lowered.includes('our goal is')) {
         candidateMemories.push({
             text: `User goal: ${latestUser.content}`,
@@ -80,14 +114,32 @@ app.post('/api/chat', async (req, res) => {
         });
     }
 
+    // Explicit memory commands
+    if (
+        lowered.includes('remember that') ||
+        lowered.includes('remember this') ||
+        lowered.includes('note that') ||
+        lowered.includes('keep in mind')
+    ) {
+        candidateMemories.push({
+            text: `User note: ${latestUser.content}`,
+            type: 'history',
+            tags
+        });
+    }
+
+    console.log('[Memory Heuristics] Candidate memories:', candidateMemories.length);
+
     try {
-        // Persist the user message
+        // Persist the user message with attachment metadata (not content)
+        const attachmentsMeta = body.attachments?.map(a => ({ name: a.name, size: a.size, type: a.type, mimeType: a.mimeType }));
         const userMsgId = insertMessage({
             session_id: sessionId,
             role: 'user',
             content: latestUser.content,
             timestamp: new Date().toISOString(),
-            tags: tags.length > 0 ? JSON.stringify(tags) : null
+            tags: tags.length > 0 ? JSON.stringify(tags) : null,
+            attachments: attachmentsMeta ? JSON.stringify(attachmentsMeta) : null
         });
 
         await saveUserMemories(userId, candidateMemories);
@@ -122,7 +174,8 @@ app.post('/api/chat/response', async (req, res) => {
             role: 'assistant',
             content,
             timestamp: new Date().toISOString(),
-            tags: tags?.length > 0 ? JSON.stringify(tags) : null
+            tags: tags?.length > 0 ? JSON.stringify(tags) : null,
+            attachments: null
         });
         return res.json({ msgId });
     } catch (error) {
@@ -150,6 +203,7 @@ app.get('/api/categories', (_req, res) => {
         const categories = getAllCategories();
         const result = categories.map(cat => ({
             ...cat,
+            pinned: cat.pinned === 1,
             items: getCategoryItems(cat.id)
         }));
         return res.json({ categories: result });
@@ -161,16 +215,67 @@ app.get('/api/categories', (_req, res) => {
 
 // Upsert a category
 app.post('/api/categories', (req, res) => {
-    const { id, title, icon, accent, sort_order } = req.body;
+    const { id, title, description, icon, accent, sort_order, pinned } = req.body;
     if (!id || !title) {
         return res.status(400).json({ error: 'id and title are required.' });
     }
     try {
-        upsertCategory({ id, title, icon: icon || 'Sparkles', accent: accent || 'from-grokPurple to-grokBlue', sort_order: sort_order || 0 });
+        upsertCategory({ id, title, description: description || null, icon: icon || 'Sparkles', accent: accent || 'from-grokPurple to-grokBlue', sort_order: sort_order || 0, pinned: pinned || 0 });
         return res.json({ ok: true });
     } catch (error) {
         console.error('Error upserting category', error);
         return res.status(500).json({ error: 'Failed to upsert category.' });
+    }
+});
+
+// Toggle category pinned status
+app.post('/api/categories/:categoryId/pin', (req, res) => {
+    const { categoryId } = req.params;
+    try {
+        const isPinned = toggleCategoryPinned(categoryId);
+        return res.json({ ok: true, pinned: isPinned });
+    } catch (error) {
+        console.error('Error toggling category pin', error);
+        return res.status(500).json({ error: 'Failed to toggle pin.' });
+    }
+});
+
+// Update category description
+app.patch('/api/categories/:categoryId/description', (req, res) => {
+    const { categoryId } = req.params;
+    const { description } = req.body as { description: string };
+    try {
+        updateCategoryDescription(categoryId, description ?? '');
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error('Error updating category description', error);
+        return res.status(500).json({ error: 'Failed to update description.' });
+    }
+});
+
+// Update category icon
+app.patch('/api/categories/:categoryId/icon', (req, res) => {
+    const { categoryId } = req.params;
+    const { icon } = req.body as { icon: string };
+    try {
+        updateCategoryIcon(categoryId, icon ?? 'Sparkles');
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error('Error updating category icon', error);
+        return res.status(500).json({ error: 'Failed to update icon.' });
+    }
+});
+
+// Update category accent/color
+app.patch('/api/categories/:categoryId/accent', (req, res) => {
+    const { categoryId } = req.params;
+    const { accent } = req.body as { accent: string };
+    try {
+        updateCategoryAccent(categoryId, accent ?? 'from-grokPurple to-grokBlue');
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error('Error updating category accent', error);
+        return res.status(500).json({ error: 'Failed to update accent.' });
     }
 });
 
@@ -207,6 +312,50 @@ app.delete('/api/categories/:categoryId/items/:itemId', (req, res) => {
     } catch (error) {
         console.error('Error deleting category item', error);
         return res.status(500).json({ error: 'Failed to delete category item.' });
+    }
+});
+
+// Delete a category
+app.delete('/api/categories/:categoryId', (req, res) => {
+    const { categoryId } = req.params;
+    try {
+        deleteCategory(categoryId);
+        return res.json({ ok: true });
+    } catch (error) {
+        console.error('Error deleting category', error);
+        return res.status(500).json({ error: 'Failed to delete category.' });
+    }
+});
+
+// Delete messages (user/assistant pairs)
+app.delete('/api/messages', (req, res) => {
+    const { messageIds } = req.body as { messageIds: string[] };
+    if (!Array.isArray(messageIds) || !messageIds.length) {
+        return res.status(400).json({ error: 'messageIds array is required.' });
+    }
+    try {
+        deleteMessages(messageIds);
+        return res.json({ ok: true, deleted: messageIds.length });
+    } catch (error) {
+        console.error('Error deleting messages', error);
+        return res.status(500).json({ error: 'Failed to delete messages.' });
+    }
+});
+
+// Update message tags (for auto-tagging)
+app.patch('/api/messages/:messageId/tags', (req, res) => {
+    const { messageId } = req.params;
+    const { tags } = req.body as { tags: string[] };
+    if (!messageId) {
+        return res.status(400).json({ error: 'messageId is required.' });
+    }
+    try {
+        const tagsJson = Array.isArray(tags) && tags.length > 0 ? JSON.stringify(tags) : null;
+        updateMessageTags(messageId, tagsJson);
+        return res.json({ ok: true, messageId, tags });
+    } catch (error) {
+        console.error('Error updating message tags', error);
+        return res.status(500).json({ error: 'Failed to update message tags.' });
     }
 });
 

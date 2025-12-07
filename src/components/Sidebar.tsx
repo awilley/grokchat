@@ -7,8 +7,9 @@ import {
     type MouseEvent as ReactMouseEvent,
     type FocusEvent
 } from 'react';
+import type { ChatMessage } from '../types/chat';
 import clsx from 'clsx';
-import { ChevronLeft, ChevronRight, Search, User, ShieldCheck, PanelsTopLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, User, ShieldCheck, PanelsTopLeft, Pin, Trash2 } from 'lucide-react';
 
 export interface ContextCategoryItem {
     id: string;
@@ -21,9 +22,11 @@ export interface ContextCategoryItem {
 export interface ContextCategory {
     id: string;
     title: string;
+    description?: string;
     icon: ComponentType<{ className?: string }>;
     accent: string; // Tailwind gradient classes
     items: ContextCategoryItem[];
+    pinned?: boolean;
 }
 
 export interface SidebarProps {
@@ -32,8 +35,12 @@ export interface SidebarProps {
     searchQuery: string;
     onSearchChange: (value: string) => void;
     categories: ContextCategory[];
+    messages: ChatMessage[];
     activeCategoryId: string | null;
     onSelectCategory: (categoryId: string | null) => void;
+    onAddCategory: () => void;
+    onTogglePin: (categoryId: string) => void;
+    onRemoveCategory?: (categoryId: string) => void;
     className?: string;
     variant?: 'desktop' | 'mobile';
 }
@@ -75,32 +82,127 @@ const BrandGlyph = () => (
     </svg>
 );
 
+// Format relative date
+function formatLastUsed(dateStr: string): string {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function Sidebar({
     isCollapsed,
     onToggle,
     searchQuery,
     onSearchChange,
     categories,
+    messages,
     activeCategoryId,
     onSelectCategory,
+    onAddCategory,
+    onTogglePin,
+    onRemoveCategory,
     className,
     variant = 'desktop'
 }: SidebarProps) {
     const [profileMenuOpen, setProfileMenuOpen] = useState(false);
     const [activeFilterOpen, setActiveFilterOpen] = useState(false);
     const [hoveredSignal, setHoveredSignal] = useState<{ categoryId: string; top: number; left: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{ categoryId: string; x: number; y: number } | null>(null);
     const profileButtonRef = useRef<HTMLButtonElement | null>(null);
     const profileMenuRef = useRef<HTMLDivElement | null>(null);
     const sidebarRef = useRef<HTMLElement | null>(null);
 
+    // Close context menu on outside click or escape
+    useEffect(() => {
+        if (!contextMenu) return;
+        const handleClick = () => setContextMenu(null);
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setContextMenu(null);
+        };
+        window.addEventListener('click', handleClick);
+        window.addEventListener('keydown', handleEscape);
+        return () => {
+            window.removeEventListener('click', handleClick);
+            window.removeEventListener('keydown', handleEscape);
+        };
+    }, [contextMenu]);
+
+    const handleContextMenu = (e: ReactMouseEvent, categoryId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ categoryId, x: e.clientX, y: e.clientY });
+    };
+
+    // Compute last used date per category from message tags
+    const categoryLastUsed = useMemo(() => {
+        const lastUsedMap = new Map<string, string>();
+        // Messages are in chronological order, so iterate backwards for most recent
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg.tags && msg.timestamp) {
+                for (const tagId of msg.tags) {
+                    if (!lastUsedMap.has(tagId)) {
+                        lastUsedMap.set(tagId, msg.timestamp);
+                    }
+                }
+            }
+        }
+        return lastUsedMap;
+    }, [messages]);
+
+    // Compute recent user prompts per category (3 most recent)
+    const categoryRecentPrompts = useMemo(() => {
+        const promptsMap = new Map<string, { content: string; timestamp: string }[]>();
+        // Iterate backwards to get most recent first
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg.role === 'user' && msg.tags) {
+                for (const tagId of msg.tags) {
+                    const existing = promptsMap.get(tagId) || [];
+                    if (existing.length < 3) {
+                        existing.push({ content: msg.content, timestamp: msg.timestamp });
+                        promptsMap.set(tagId, existing);
+                    }
+                }
+            }
+        }
+        return promptsMap;
+    }, [messages]);
+
     const filtered = useMemo(() => {
-        if (!searchQuery.trim()) {
-            return categories;
+        let result = categories;
+
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            result = result.filter(category => category.title.toLowerCase().includes(query));
         }
 
-        const query = searchQuery.toLowerCase();
-        return categories.filter(category => category.title.toLowerCase().includes(query));
-    }, [categories, searchQuery]);
+        // Sort: pinned first, then by last used (most recent first), then alphabetically
+        return [...result].sort((a, b) => {
+            // Pinned categories always come first
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+
+            // Within same pin status, sort by last used
+            const aTime = categoryLastUsed.get(a.id);
+            const bTime = categoryLastUsed.get(b.id);
+            if (aTime && bTime) {
+                return new Date(bTime).getTime() - new Date(aTime).getTime();
+            }
+            if (aTime) return -1;
+            if (bTime) return 1;
+            return a.title.localeCompare(b.title);
+        });
+    }, [categories, searchQuery, categoryLastUsed]);
 
     const isRailMode = isCollapsed && variant === 'desktop';
     const showExpandedSections = !isRailMode;
@@ -228,13 +330,20 @@ export default function Sidebar({
                                 <input
                                     value={searchQuery}
                                     onChange={event => onSearchChange(event.target.value)}
-                                    placeholder="Search a focus"
+                                    placeholder="Search a context..."
                                     className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
                                 />
                             </div>
                             <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-white/30">
                                 <PanelsTopLeft className="h-3.5 w-3.5" />
                                 <span>Context Mesh</span>
+                                <button
+                                    type="button"
+                                    onClick={onAddCategory}
+                                    className="ml-auto rounded-full border border-white/20 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.25em] text-white/70 transition hover:border-white/40 hover:text-white"
+                                >
+                                    Add Context
+                                </button>
                             </div>
                         </div>
                     </>
@@ -247,10 +356,11 @@ export default function Sidebar({
                         const Icon = category.icon;
                         const isActive = category.id === activeCategoryId;
                         return (
-                            <div key={category.id}>
+                            <div key={category.id} className="group relative">
                                 <button
                                     type="button"
                                     onClick={() => onSelectCategory(category.id)}
+                                    onContextMenu={e => handleContextMenu(e, category.id)}
                                     onMouseEnter={event => handleCategoryHover(event, category.id)}
                                     onFocus={event => handleCategoryHover(event, category.id)}
                                     onMouseLeave={() => handleCategoryLeave(category.id)}
@@ -279,36 +389,59 @@ export default function Sidebar({
                                     {showExpandedSections && (
                                         <div className="min-w-0 flex-1 transition-all duration-200">
                                             <p className="text-sm font-semibold leading-tight">{category.title}</p>
-                                            <p className="text-xs text-white/45">{category.items.length} tagged signals</p>
+                                            <p className="text-xs text-white/45">
+                                                {categoryLastUsed.get(category.id)
+                                                    ? formatLastUsed(categoryLastUsed.get(category.id)!)
+                                                    : 'Not used yet'}
+                                            </p>
                                         </div>
                                     )}
                                 </button>
+                                {showExpandedSections && (
+                                    <button
+                                        type="button"
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            onTogglePin(category.id);
+                                        }}
+                                        className={clsx(
+                                            'absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 transition',
+                                            category.pinned
+                                                ? 'text-grokPink hover:bg-white/10'
+                                                : 'text-white/30 opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-white'
+                                        )}
+                                        title={category.pinned ? 'Unpin' : 'Pin to top'}
+                                    >
+                                        <Pin className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
                             </div>
                         );
                     })}
                 </div>
             </nav>
 
-            {hoveredCategory && hoveredCategory.items.length > 0 && hoveredSignal && (
-                <div
-                    className="pointer-events-none fixed z-50 w-64 -translate-y-1/2 space-y-2 rounded-2xl border border-white/10 bg-secondary/95 p-3 text-sm text-white shadow-2xl shadow-black/40"
-                    style={{ top: hoveredSignal.top, left: hoveredSignal.left }}
-                >
-                    <p className="text-[11px] uppercase tracking-[0.3em] text-white/40">Signals</p>
-                    {hoveredCategory.items.map(item => (
-                        <div
-                            key={item.id}
-                            className={clsx(
-                                'rounded-xl border border-white/5 bg-secondary/80 px-3 py-2 text-xs text-white/70 shadow-sm transition',
-                                item.emphasis && 'border-grokPurple/50 text-white'
-                            )}
-                        >
-                            <p className="truncate font-medium">{item.title}</p>
-                            {item.description && <p className="truncate text-[11px] text-white/45">{item.description}</p>}
-                        </div>
-                    ))}
-                </div>
-            )}
+            {hoveredSignal && (() => {
+                const recentPrompts = categoryRecentPrompts.get(hoveredSignal.categoryId) || [];
+                if (recentPrompts.length === 0) return null;
+                return (
+                    <div
+                        className="pointer-events-none fixed z-50 w-72 -translate-y-1/2 space-y-2 rounded-2xl border border-white/10 bg-secondary/95 p-3 text-sm text-white shadow-2xl shadow-black/40"
+                        style={{ top: hoveredSignal.top, left: hoveredSignal.left }}
+                    >
+                        <p className="text-[11px] uppercase tracking-[0.3em] text-white/40">Recent Prompts</p>
+                        {recentPrompts.map((prompt, idx) => (
+                            <div
+                                key={idx}
+                                className="rounded-xl border border-white/5 bg-secondary/80 px-3 py-2 text-xs text-white/70 shadow-sm"
+                            >
+                                <p className="line-clamp-2 font-medium">{prompt.content}</p>
+                                <p className="mt-1 text-[10px] text-white/40">{formatLastUsed(prompt.timestamp)}</p>
+                            </div>
+                        ))}
+                    </div>
+                );
+            })()}
 
             {showExpandedSections && (
                 <div className="space-y-5 px-4 pb-6">
@@ -360,6 +493,27 @@ export default function Sidebar({
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Right-click context menu */}
+            {contextMenu && onRemoveCategory && (
+                <div
+                    className="fixed z-[400] min-w-[160px] rounded-xl border border-white/20 bg-[#1a1a2e] py-1 shadow-2xl shadow-black/60"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onRemoveCategory(contextMenu.categoryId);
+                            setContextMenu(null);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Remove Category
+                    </button>
                 </div>
             )}
         </aside>

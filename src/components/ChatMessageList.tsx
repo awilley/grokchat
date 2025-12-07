@@ -2,12 +2,16 @@ import { useEffect, useRef, type HTMLAttributes } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
+import { Trash2, File, Image, FileText } from 'lucide-react';
 import type { ChatMessage } from '../types/chat';
+import type { ContextCategory } from './Sidebar';
 
 interface ChatMessageListProps {
     messages: ChatMessage[];
     isAssistantTyping: boolean;
+    categories?: ContextCategory[];
     messageRefs?: React.MutableRefObject<Map<string, HTMLDivElement>>;
+    onDeleteMessage?: (messageId: string) => void;
 }
 
 const roleConfig = {
@@ -54,7 +58,7 @@ const markdownComponents: Components = {
     code: CodeRenderer
 };
 
-export default function ChatMessageList({ messages, isAssistantTyping, messageRefs }: ChatMessageListProps) {
+export default function ChatMessageList({ messages, isAssistantTyping, messageRefs, categories, onDeleteMessage }: ChatMessageListProps) {
     const endRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -64,7 +68,7 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
     return (
         <div className="px-6 pt-8 pb-28">
             <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
-                {messages.map(message => {
+                {messages.filter(m => m.role !== 'system').map(message => {
                     const config = roleConfig[message.role];
                     const isUser = message.role === 'user';
                     return (
@@ -75,8 +79,19 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
                                     messageRefs.current.set(message.id, el);
                                 }
                             }}
-                            className={clsx('flex w-full flex-col gap-2', isUser && 'items-end')}
+                            className={clsx('group relative flex w-full flex-col gap-2', isUser && 'items-end')}
                         >
+                            {/* Delete button - only show for user messages (which will delete the pair) */}
+                            {isUser && onDeleteMessage && (
+                                <button
+                                    type="button"
+                                    onClick={() => onDeleteMessage(message.id)}
+                                    className="absolute -left-2 top-0 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-secondary/90 text-white/40 opacity-0 transition hover:border-red-500/50 hover:text-red-400 group-hover:opacity-100"
+                                    title="Delete this message pair"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            )}
                             <div
                                 className={clsx(
                                     'flex w-full flex-wrap items-baseline gap-3 text-xs text-white/45',
@@ -96,11 +111,17 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
                                 </span>
                                 {message.tags && message.tags.length > 0 && (
                                     <div className={clsx('flex flex-wrap gap-1', isUser && 'justify-end w-full')}>
-                                        {message.tags.map(tag => (
-                                            <span key={tag} className="rounded-lg bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-white/40">
-                                                {tag}
-                                            </span>
-                                        ))}
+                                        {message.tags.map(tagId => {
+                                            const label = categories?.find(cat => cat.id === tagId)?.title ?? tagId;
+                                            return (
+                                                <span
+                                                    key={tagId}
+                                                    className="rounded-lg bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-white/40"
+                                                >
+                                                    {label}
+                                                </span>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -117,6 +138,30 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
                                         {message.content}
                                     </ReactMarkdown>
                                 </div>
+                                {/* Display attachments as compact pills */}
+                                {message.attachments && message.attachments.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {message.attachments.map((file, idx) => {
+                                            const FileIcon = file.type === 'image' ? Image : file.type === 'pdf' ? FileText : File;
+                                            return (
+                                                <div
+                                                    key={`${file.name}-${idx}`}
+                                                    className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-xs"
+                                                >
+                                                    {file.type === 'image' && file.content?.startsWith('data:') ? (
+                                                        <img src={file.content} alt={file.name} className="h-5 w-5 rounded object-cover" />
+                                                    ) : (
+                                                        <FileIcon className={clsx(
+                                                            "h-3.5 w-3.5",
+                                                            file.type === 'pdf' ? 'text-red-400' : file.type === 'image' ? 'text-blue-400' : 'text-white/50'
+                                                        )} />
+                                                    )}
+                                                    <span className="max-w-[120px] truncate text-white/70">{file.name}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                                 {message.summary && (
                                     <p className="mt-3 text-xs text-white/60">{message.summary}</p>
                                 )}
