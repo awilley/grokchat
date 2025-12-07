@@ -6,7 +6,7 @@ import type { ChatMessage } from './types/chat';
 import { Aperture, CircuitBoard, Compass, Rocket, Share2 } from 'lucide-react';
 import { createChatCompletion, grokIsConfigured } from './lib/grokClient';
 
-const contextCategories: ContextCategory[] = [
+const initialContextCategories: ContextCategory[] = [
     {
         id: 'launch-readiness',
         title: 'Launch Readiness',
@@ -113,19 +113,20 @@ function synthesizeAssistantReply(prompt: string, category: ContextCategory): st
 
 export default function App() {
     const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+    const [categories, setCategories] = useState<ContextCategory[]>(initialContextCategories);
     const [isAssistantTyping, setAssistantTyping] = useState(false);
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
     const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [grokStatusMessage, setGrokStatusMessage] = useState<string | null>(null);
-    const [composerTags, setComposerTags] = useState<string[]>(contextCategories[0] ? [contextCategories[0].id] : []);
+    const [composerTags, setComposerTags] = useState<string[]>(initialContextCategories[0] ? [initialContextCategories[0].id] : []);
 
     const grokConfigured = useMemo(() => grokIsConfigured(), []);
 
     const activeCategory = useMemo(
-        () => contextCategories.find(category => category.id === activeCategoryId) ?? null,
-        [activeCategoryId]
+        () => categories.find(category => category.id === activeCategoryId) ?? null,
+        [activeCategoryId, categories]
     );
 
     useEffect(() => {
@@ -136,9 +137,9 @@ export default function App() {
 
     const handleSendMessage = useCallback(
         async (content: string, tags: string[]) => {
-            const fallbackTag = contextCategories[0]?.id;
+            const fallbackTag = categories[0]?.id;
             const resolvedTags = tags.length > 0 ? tags : fallbackTag ? [fallbackTag] : [];
-            const replyCategory = (contextCategories.find(category => resolvedTags.includes(category.id)) ?? contextCategories[0])!;
+            const replyCategory = (categories.find(category => resolvedTags.includes(category.id)) ?? categories[0])!;
             const userMessage: ChatMessage = {
                 id: `user-${createId()}`,
                 role: 'user',
@@ -198,7 +199,7 @@ export default function App() {
                 setAssistantTyping(false);
             }
         },
-        [contextCategories, grokConfigured, messages]
+        [categories, grokConfigured, messages]
     );
 
     const handleToggleComposerTag = useCallback((tagId: string) => {
@@ -218,12 +219,23 @@ export default function App() {
             setComposerTags([activeCategoryId]);
             return;
         }
-        if (contextCategories[0]) {
-            setComposerTags([contextCategories[0].id]);
+        if (categories[0]) {
+            setComposerTags([categories[0].id]);
             return;
         }
         setComposerTags([]);
-    }, [activeCategoryId]);
+    }, [activeCategoryId, categories]);
+
+    const handleUpdateCategoryItems = useCallback(
+        (categoryId: string, items: ContextCategory['items']) => {
+            setCategories(prev => prev.map(category => (category.id === categoryId ? { ...category, items } : category)));
+        },
+        []
+    );
+
+    const handleRenameCategory = useCallback((categoryId: string, nextTitle: string) => {
+        setCategories(prev => prev.map(category => (category.id === categoryId ? { ...category, title: nextTitle } : category)));
+    }, []);
 
     return (
         <AppLayout
@@ -232,7 +244,7 @@ export default function App() {
                 onToggle: () => setSidebarCollapsed(prev => !prev),
                 searchQuery,
                 onSearchChange: setSearchQuery,
-                categories: contextCategories,
+                categories,
                 activeCategoryId,
                 onSelectCategory: setActiveCategoryId
             }}
@@ -241,18 +253,20 @@ export default function App() {
             onMobileMenuClose={() => setMobileMenuOpen(false)}
         >
             <ChatPanel
-                title="Mission Ops • Grok Trainer"
-                subtitle="Synthesizing strategic context, tagging live signals, and queuing next actions for the team."
+                title={activeCategory ? activeCategory.title : 'All contexts'}
+                subtitle={activeCategory ? 'Editing live context signals and feed.' : 'Synthesizing strategic context, tagging live signals, and queuing next actions for the team.'}
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 isAssistantTyping={isAssistantTyping}
                 activeCategory={activeCategory}
                 statusMessage={grokStatusMessage}
                 isGrokConnected={grokConfigured && !grokStatusMessage}
-                contextCategories={contextCategories}
+                contextCategories={categories}
                 composerTags={composerTags}
                 onToggleComposerTag={handleToggleComposerTag}
                 onResetComposerTags={handleResetComposerTags}
+                onUpdateCategoryItems={handleUpdateCategoryItems}
+                onRenameCategory={handleRenameCategory}
             />
         </AppLayout>
     );
