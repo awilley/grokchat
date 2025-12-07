@@ -160,9 +160,48 @@ export default function App() {
                     systemPrompt ? [systemPrompt, ...trimmedConversation] : trimmedConversation
                 ).map(message => ({ role: message.role, content: message.content }));
 
+                let usedMemories: { text: string; type: string; tags: string[] }[] = [];
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: 'demo-user',
+                            messages: completionMessages,
+                            tags: resolvedTags
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json() as { usedMemories?: { text: string; type: string; tags: string[] }[] };
+                        usedMemories = data.usedMemories ?? [];
+                    }
+                } catch (error) {
+                    console.warn('Mem0 /api/chat call failed, continuing without memories', error);
+                }
+
+                const memorySection = usedMemories.length
+                    ? usedMemories.map(memory => `- (${memory.type}) ${memory.text}`).join('\n')
+                    : 'None yet.';
+
+                const grokMessages = [
+                    systemPrompt
+                        ? {
+                            role: systemPrompt.role,
+                            content: `${systemPrompt.content}\n\nKnown about this user and context (from memory):\n${memorySection}`
+                        }
+                        : {
+                            role: 'system' as const,
+                            content: `You are Grok, an adaptive operations co-pilot. Maintain a resilient tone and weave in relevant context signals when responding.\n\nKnown about this user and context (from memory):\n${memorySection}`
+                        },
+                    ...trimmedConversation.map(message => ({ role: message.role, content: message.content })),
+                    { role: 'user' as const, content }
+                ];
+
                 const assistantText = grokConfigured
                     ? await createChatCompletion(
-                        completionMessages,
+                        grokMessages,
                         {
                             temperature: 0.6,
                             topP: 0.9,

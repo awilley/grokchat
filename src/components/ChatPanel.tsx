@@ -196,7 +196,7 @@ export default function ChatPanel({
 
     return (
         <div className="flex flex-1 min-h-0 flex-col relative">
-            <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
+            <div className="flex-1 basis-0 min-h-0 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
                 <div className="sticky top-0 z-30 border-b border-white/5 bg-secondary/80 backdrop-blur-md">
                     <div className="relative mx-auto w-full max-w-4xl px-4 py-2">
                         <div ref={filterButtonRef} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-secondary/70 px-4 py-2.5 text-white transition hover:border-white/30 hover:bg-secondary/80">
@@ -308,13 +308,13 @@ export default function ChatPanel({
             <div
                 ref={drawerRef}
                 className={clsx(
-                    'pointer-events-none absolute left-0 right-0 top-16 origin-top transition-all duration-300 z-50 px-4',
+                    'absolute left-0 right-0 top-16 origin-top transition-all duration-300 z-50 px-4',
                     drawerOpen
-                        ? 'translate-y-0 opacity-100'
-                        : '-translate-y-2 opacity-0'
+                        ? 'translate-y-0 opacity-100 pointer-events-auto'
+                        : '-translate-y-2 opacity-0 pointer-events-none'
                 )}
             >
-                <div className="pointer-events-auto mx-auto w-full max-w-4xl">
+                <div className="mx-auto w-full max-w-4xl">
                     <div className="rounded-3xl border border-white/10 bg-secondary/95 shadow-2xl shadow-black/50 backdrop-blur-xl max-h-[calc(100vh-10rem)] overflow-y-auto">
                         <ContextDrawer
                             title={title}
