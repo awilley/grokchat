@@ -20,7 +20,7 @@ const roleConfig = {
         label: 'Grok'
     },
     user: {
-        bubble: 'bg-grokBlue/10 border-grokBlue/40 text-white',
+        bubble: 'bg-white/8 border-white/10 text-white',
         label: 'You'
     },
     system: {
