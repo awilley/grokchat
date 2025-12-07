@@ -99,14 +99,7 @@ export default function Sidebar({
         }
 
         const query = searchQuery.toLowerCase();
-        return categories
-            .map(category => ({
-                ...category,
-                items: category.items.filter(item =>
-                    item.title.toLowerCase().includes(query) || item.description?.toLowerCase().includes(query)
-                )
-            }))
-            .filter(category => category.items.length > 0);
+        return categories.filter(category => category.title.toLowerCase().includes(query));
     }, [categories, searchQuery]);
 
     const isRailMode = isCollapsed && variant === 'desktop';
@@ -235,7 +228,7 @@ export default function Sidebar({
                                 <input
                                     value={searchQuery}
                                     onChange={event => onSearchChange(event.target.value)}
-                                    placeholder="Search signals"
+                                    placeholder="Search a focus"
                                     className="flex-1 bg-transparent text-sm text-white placeholder:text-white/40 focus:outline-none"
                                 />
                             </div>

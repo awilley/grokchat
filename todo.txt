@@ -1,13 +1,22 @@
-work UI / UX until 12:15
+fix
+- the sidebar search needs to be for the thread name
+- remove scrollbar from popup signal editor and move the div down slightly
+
+UI / UX
 - dynamic context chips as prompt is typed
 - user can click + to add context tag chips
-- on existing promts user can click edit to edits tags
+- ability for user to make new focus mesh
+- hide the system prompt portion
 
-for signals within a category we want to let the user add remove edit these signals which are used to aid in the context detection and dynamic filtering
-we want to also have a link there to view context summary and gain other insights in that area... could be scrollable
+if there is time UI features
+- edit / delete prior prommpts
+- show context length used
+
+generate a first set of data problems not too large to test db function mem0 calls
+do we want to also have a link there to view context summary and gain other insights in that area... could be scrollable
 
 
 future tools integration:
 - context detection and automatic suggestions for creating new context signals
 - tools for managing persona context
-- 
+- tool for grok to automaticall
