@@ -248,7 +248,7 @@ export default function App() {
                     });
 
                     if (response.ok) {
-                        const data = await response.json() as { 
+                        const data = await response.json() as {
                             usedMemories?: { text: string; type: string; tags: string[] }[];
                             ragDocs?: { text: string }[];
                             sessionId?: string;

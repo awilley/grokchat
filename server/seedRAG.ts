@@ -47,7 +47,7 @@ const sampleDocs = [
 
 async function seedRAG() {
     const baseURL = 'http://localhost:8787';
-    
+
     for (const { namespace, documents } of sampleDocs) {
         try {
             const response = await fetch(`${baseURL}/api/rag/ingest`, {
@@ -55,7 +55,7 @@ async function seedRAG() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ namespace, documents })
             });
-            
+
             if (response.ok) {
                 const result = await response.json();
                 console.log(`✅ Seeded ${result.count} documents into "${namespace}" namespace`);
@@ -66,7 +66,7 @@ async function seedRAG() {
             console.error(`❌ Error seeding "${namespace}":`, error);
         }
     }
-    
+
     console.log('\n🎉 RAG knowledge base seeded! Try asking about:');
     console.log('  - "What\'s our deployment status?" (launch-readiness)');
     console.log('  - "Tell me about the model drift issue" (incident-digest)');

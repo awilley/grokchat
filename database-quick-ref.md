@@ -11,7 +11,7 @@ npx tsx server/seedRAG.ts  # Optional: seed sample RAG docs
 # Terminal 1 - Backend
 npm run dev:server
 
-# Terminal 2 - Frontend  
+# Terminal 2 - Frontend
 npm run dev
 ```
 

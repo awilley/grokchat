@@ -34,7 +34,7 @@ export async function searchRelevantDocs(namespace: string, query: string, k = 5
     const tableName = `kb_${namespace}`;
     const tableExists = (await db.tableNames()).includes(tableName);
     if (!tableExists) return [] as RAGDocument[];
-    
+
     try {
         const table = await db.openTable(tableName);
         // For now, return all docs from the namespace (no vector search yet)

@@ -3,21 +3,25 @@
 ## What Just Got Wired Up
 
 ### 1. **Chat History Persistence & Restoration**
+
 - User and assistant messages now persist to SQLite via `/api/chat` and `/api/chat/response`
 - On page reload, chat history automatically restores from the database
 - Session ID stored in `localStorage` to maintain continuity across refreshes
 
 ### 2. **Category Loading from Database**
+
 - Categories and signal items now load from `/api/categories` on app mount
 - Falls back to hardcoded defaults if DB is unavailable
 - Dynamic category management ready (API endpoints already exist)
 
 ### 3. **RAG Knowledge Base Integration**
+
 - LanceDB RAG is fully wired into the chat flow
 - `ragDocs` retrieved on every user message and injected into Grok system prompt
 - Knowledge base organized by namespace (matches category tags)
 
 ### 4. **Memory + Knowledge Layering**
+
 - Grok system prompt now includes:
   - **User memories** from Mem0 (preferences, profile, goals)
   - **Knowledge base docs** from LanceDB (relevant to current context)
@@ -27,7 +31,7 @@
 
 ### Chat Flow (End-to-End)
 
-1. **User sends message** → 
+1. **User sends message** →
 2. **Frontend calls `/api/chat`** with userId, messages, tags →
 3. **Backend**:
    - Creates/gets session
@@ -70,6 +74,7 @@ npx tsx server/seedRAG.ts
 ```
 
 Output should show:
+
 ```
 ✅ Seeded 3 documents into "launch-readiness" namespace
 ✅ Seeded 2 documents into "incident-digest" namespace
@@ -95,6 +100,7 @@ Output should show:
 ### 4. Verify Data Layers
 
 **Check SQLite (messages persisted)**:
+
 ```pwsh
 sqlite3 data/grokchat.db "SELECT role, substr(content, 1, 50) FROM messages ORDER BY timestamp DESC LIMIT 5;"
 ```
@@ -103,6 +109,7 @@ sqlite3 data/grokchat.db "SELECT role, substr(content, 1, 50) FROM messages ORDE
 Open browser DevTools → Application → Local Storage → `grokchat-session-id`
 
 **Check LanceDB (RAG docs)**:
+
 ```pwsh
 ls data/lancedb/
 # Should show: kb_launch-readiness.lance, kb_incident-digest.lance, etc.
@@ -111,6 +118,7 @@ ls data/lancedb/
 ## What's Now Available
 
 ### For Users
+
 - ✅ Chat history persists across page reloads
 - ✅ Personalized responses based on stated preferences
 - ✅ Context-aware answers using knowledge base
@@ -119,6 +127,7 @@ ls data/lancedb/
 ### For Developers
 
 **API Endpoints**:
+
 - `POST /api/chat` - Process message (persists + retrieves context)
 - `POST /api/chat/response` - Save assistant reply
 - `GET /api/messages/:sessionId` - Fetch history
@@ -126,10 +135,12 @@ ls data/lancedb/
 - `POST /api/rag/ingest` - Add knowledge base docs
 
 **Seed Scripts**:
+
 - `npx tsx server/seedCategories.ts` - Initial categories
 - `npx tsx server/seedRAG.ts` - Sample knowledge base
 
 **Data Locations**:
+
 - `data/grokchat.db` - SQLite (messages, sessions, categories)
 - `data/lancedb/` - Vector embeddings (RAG knowledge)
 - Mem0 cloud - User memories (API-based)
@@ -154,23 +165,28 @@ ls data/lancedb/
 ## Next Steps (Optional)
 
 ### Add More Knowledge
+
 Create docs matching your categories:
+
 ```typescript
 // In your app or via API
-fetch('http://localhost:8787/api/rag/ingest', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+fetch("http://localhost:8787/api/rag/ingest", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    namespace: 'team-os',
+    namespace: "team-os",
     documents: [
-      { text: 'Daily standup at 9 AM: discuss blockers, wins, and priorities.' },
-      { text: 'Weekly retro format: What worked? What didn\'t? Action items.' }
-    ]
-  })
+      {
+        text: "Daily standup at 9 AM: discuss blockers, wins, and priorities.",
+      },
+      { text: "Weekly retro format: What worked? What didn't? Action items." },
+    ],
+  }),
 });
 ```
 
 ### Clear and Restart
+
 ```pwsh
 # Clear all data
 rm data/grokchat.db
@@ -185,20 +201,22 @@ npx tsx server/seedRAG.ts
 ```
 
 ### Monitor What's Happening
+
 Add to `App.tsx` to see context being used:
+
 ```typescript
-console.log('Memories:', usedMemories);
-console.log('RAG docs:', ragDocs);
+console.log("Memories:", usedMemories);
+console.log("RAG docs:", ragDocs);
 ```
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| History not restoring | Check browser console for errors; verify session ID in localStorage |
-| No RAG results | Run `npx tsx server/seedRAG.ts` to populate knowledge base |
-| Categories not loading | Ensure backend is running; check `/api/categories` endpoint |
-| Memories not working | Verify `MEM0_API_KEY` in `.env` |
+| Issue                  | Solution                                                            |
+| ---------------------- | ------------------------------------------------------------------- |
+| History not restoring  | Check browser console for errors; verify session ID in localStorage |
+| No RAG results         | Run `npx tsx server/seedRAG.ts` to populate knowledge base          |
+| Categories not loading | Ensure backend is running; check `/api/categories` endpoint         |
+| Memories not working   | Verify `MEM0_API_KEY` in `.env`                                     |
 
 ## Architecture Recap
 
@@ -234,6 +252,7 @@ Grok generates response          │
 ```
 
 **Storage**:
+
 - SQLite: UI state, history (source of truth)
 - Mem0: Semantic user memories (context injection)
 - LanceDB: Knowledge retrieval (RAG)
