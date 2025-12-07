@@ -1,4 +1,12 @@
-import { useMemo, useState, useRef, useEffect, type ComponentType, type MouseEvent } from 'react';
+import {
+    useMemo,
+    useState,
+    useRef,
+    useEffect,
+    type ComponentType,
+    type MouseEvent as ReactMouseEvent,
+    type FocusEvent
+} from 'react';
 import clsx from 'clsx';
 import { ChevronLeft, ChevronRight, Search, User, ShieldCheck, PanelsTopLeft } from 'lucide-react';
 
@@ -109,7 +117,7 @@ export default function Sidebar({
     const activeCategory = categories.find(category => category.id === activeCategoryId);
 
     useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
+        function handleClickOutside(event: globalThis.MouseEvent) {
             if (!profileMenuOpen) {
                 return;
             }
@@ -133,7 +141,9 @@ export default function Sidebar({
         ? categories.find(category => category.id === hoveredSignal.categoryId)
         : null;
 
-    const handleCategoryHover = (event: MouseEvent<HTMLButtonElement>, categoryId: string) => {
+    type HoverEvent = ReactMouseEvent<HTMLButtonElement> | FocusEvent<HTMLButtonElement>;
+
+    const handleCategoryHover = (event: HoverEvent, categoryId: string) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const sidebarRect = sidebarRef.current?.getBoundingClientRect();
         setHoveredSignal({
@@ -322,7 +332,7 @@ export default function Sidebar({
                                 <User className="h-5 w-5 text-white" />
                             </div>
                             <div className="min-w-0 flex-1 text-sm">
-                                <p className="font-medium text-white">Ayla Winters</p>
+                                <p className="font-medium text-white">Aaron Willey</p>
                                 <p className="text-xs text-white/45">Inference sandbox • 32 contexts</p>
                             </div>
                             <div className="flex flex-col gap-1 text-[10px] uppercase tracking-[0.25em] text-white/35">

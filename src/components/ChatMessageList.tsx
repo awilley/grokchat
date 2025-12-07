@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type HTMLAttributes } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import clsx from 'clsx';
 import type { ChatMessage } from '../types/chat';
 
@@ -23,6 +25,35 @@ const roleConfig = {
     }
 } as const;
 
+const CodeRenderer = ({ inline, ...props }: HTMLAttributes<HTMLElement> & { inline?: boolean }) =>
+    inline ? (
+        <code className="rounded-md bg-white/10 px-1 py-0.5 text-xs text-white" {...props} />
+    ) : (
+        <code className="block rounded-2xl bg-black/40 px-4 py-3 text-xs text-white" {...props} />
+    );
+
+const markdownComponents: Components = {
+    p: ({ node, ...props }) => (
+        <p className="mb-3 text-sm leading-relaxed text-white/90 last:mb-0" {...props} />
+    ),
+    ul: ({ node, ...props }) => (
+        <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-white/90 last:mb-0" {...props} />
+    ),
+    ol: ({ node, ...props }) => (
+        <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-white/90 last:mb-0" {...props} />
+    ),
+    li: ({ node, ...props }) => (
+        <li className="text-sm leading-relaxed text-white/90" {...props} />
+    ),
+    strong: ({ node, ...props }) => (
+        <strong className="text-white" {...props} />
+    ),
+    a: ({ node, ...props }) => (
+        <a className="text-grokBlue underline underline-offset-2" target="_blank" rel="noreferrer" {...props} />
+    ),
+    code: CodeRenderer
+};
+
 export default function ChatMessageList({ messages, isAssistantTyping, messageRefs }: ChatMessageListProps) {
     const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -32,7 +63,7 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
 
     return (
         <div className="px-6 pt-8 pb-28">
-            <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+            <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
                 {messages.map(message => {
                     const config = roleConfig[message.role];
                     const isUser = message.role === 'user';
@@ -77,11 +108,15 @@ export default function ChatMessageList({ messages, isAssistantTyping, messageRe
                                 className={clsx(
                                     'w-full rounded-3xl border p-4 shadow-lg shadow-black/30 backdrop-blur-sm',
                                     config.bubble,
-                                    'sm:max-w-[75%]',
+                                    'sm:max-w-[85%]',
                                     isUser && 'self-end'
                                 )}
                             >
-                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/90">{message.content}</p>
+                                <div className="space-y-3">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                        {message.content}
+                                    </ReactMarkdown>
+                                </div>
                                 {message.summary && (
                                     <p className="mt-3 text-xs text-white/60">{message.summary}</p>
                                 )}

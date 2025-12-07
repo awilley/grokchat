@@ -67,7 +67,7 @@ export default function ChatInput({ onSend, disabled, contexts, selectedTags, on
 
     return (
         <div className="sticky bottom-0 left-0 right-0 bg-transparent px-3 py-2 backdrop-blur z-20">
-            <div className="mx-auto w-full max-w-3xl space-y-2.5">
+            <div className="mx-auto w-full max-w-4xl space-y-2.5">
                 <div className="flex flex-wrap gap-1.5">
                     {quickPrompts.map(prompt => (
                         <button

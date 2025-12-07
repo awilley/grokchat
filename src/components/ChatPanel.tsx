@@ -67,12 +67,34 @@ export default function ChatPanel({
     const [searchQuery, setSearchQuery] = useState('');
     const [searchFocused, setSearchFocused] = useState(false);
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const drawerRef = useRef<HTMLDivElement | null>(null);
     const pendingScrollAdjustment = useRef<{ prevHeight: number; prevTop: number } | null>(null);
     const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
     useEffect(() => {
         setDrawerOpen(false);
     }, [activeCategory?.id]);
+
+    useEffect(() => {
+        if (!drawerOpen) {
+            return;
+        }
+
+        const handleClick = (event: MouseEvent) => {
+            const container = drawerRef.current;
+            if (!container) {
+                return;
+            }
+            if (!container.contains(event.target as Node)) {
+                setDrawerOpen(false);
+            }
+        };
+
+        window.addEventListener('mousedown', handleClick);
+        return () => {
+            window.removeEventListener('mousedown', handleClick);
+        };
+    }, [drawerOpen]);
 
     useEffect(() => {
         if (orderedMessages.length === 0) {
@@ -252,6 +274,7 @@ export default function ChatPanel({
                         </div>
 
                         <div
+                            ref={drawerRef}
                             className={clsx(
                                 'absolute left-0 right-0 top-full origin-top pt-3 transition-all duration-300',
                                 drawerOpen
