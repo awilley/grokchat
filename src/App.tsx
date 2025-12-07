@@ -272,7 +272,16 @@ export default function App() {
 
             try {
                 const systemPrompt = nextHistory.find(message => message.role === 'system');
-                const conversationalMessages = nextHistory.filter(message => message.role !== 'system');
+                let conversationalMessages = nextHistory.filter(message => message.role !== 'system');
+
+                // When viewing a specific category, filter to only messages in that category
+                // This keeps the context focused and reduces token usage
+                if (activeCategoryId) {
+                    conversationalMessages = conversationalMessages.filter(
+                        msg => msg.tags?.includes(activeCategoryId)
+                    );
+                }
+
                 const trimmedConversation = conversationalMessages.slice(-12);
 
                 // Build completion messages - use grokContent for the latest user message
@@ -285,6 +294,10 @@ export default function App() {
                     }
                     return { role: message.role, content: message.content };
                 });
+
+                // Determine effective tags for memory/RAG retrieval
+                // Use the active category if filtering, otherwise use provided tags
+                const effectiveTags = activeCategoryId ? [activeCategoryId] : tags;
 
                 let usedMemories: { text: string; type: string; tags: string[] }[] = [];
                 let ragDocs: { text: string }[] = [];
@@ -306,7 +319,7 @@ export default function App() {
                         body: JSON.stringify({
                             userId: 'demo-user',
                             messages: completionMessages,
-                            tags: tags, // Send original tags (may be empty)
+                            tags: effectiveTags, // Use effective tags for memory/RAG retrieval
                             attachments: attachmentsMeta
                         })
                     });
@@ -563,7 +576,7 @@ export default function App() {
                 setAssistantTyping(false);
             }
         },
-        [categories, grokConfigured, messages]
+        [categories, grokConfigured, messages, activeCategoryId]
     );
 
     const handleToggleComposerTag = useCallback((tagId: string) => {

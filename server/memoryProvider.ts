@@ -79,12 +79,9 @@ export async function getRelevantMemories(userId: string, query: string, tags: s
     console.log('[Mem0] getRelevantMemories', { userId, query, tags });
 
     try {
-        // Mem0 v2 search API: query + options with filters containing user_id
+        // Mem0 search API: user_id goes at top level of options, not in filters
         const searchOptions = {
-            version: 'v2',
-            filters: {
-                user_id: userId
-            },
+            user_id: userId,
             limit: 10,
             ...mem0Options
         };
