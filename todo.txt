@@ -1,0 +1,10 @@
+work UI / UX until 12:15
+- dynamic context chips as prompt is typed
+- user can click + to add context tag chips
+- on existing promts user can click edit to edits tags
+
+for signals within a category we want to let the user add remove edit these signals which are used to aid in the context detection and dynamic filtering
+we want to also have a link there to view context summary and gain other insights in that area... could be scrollable
+
+
+

@@ -1,0 +1,32 @@
+Overview:
+This web app extends an LLM to provide sophisticated context management making use of innovative categorization techniques
+
+What is a category?
+A category groups related chats. Each chat can be categorized with one or more categories.
+A category has a context (the summarized context from the chat history associated with that category) that is stored in mem0 and a history (the history of the chats associated with that category)
+
+User journey:
+1) User starts a new chat. The LLM provides responses to user prompts AND automatically assigns the chat to different categories. The UI provides an easy way for the user to modify the categories that have been assigned
+2) Users selects a category or categories. Chat window shows summarized history of the chats from those categories. The context from those categories is used in its interactions with the LLM.  
+
+When a category's context reaches a certain size (25% of the context window size), it should use a summary of that context in the prompt.
+Every time a prompt is received the app should first check whether the prompt contains direct instructions to modify the categorization, before returning a response to the prompt.
+
+UI:
+Main Feature:
+The app will contain a sidebar that groups contexts in a slack like structure. It returns each unique combination of context groupings. e.g. if a chat is assigned to gardening, shopping and plants then the chat history when that option is selected should contain all chats that have those 3 categories. In a chat with multiple categories, grok should divide up the chat history to reference the specific place in the chat where the category exists
+
+Technical architecture:
+The frontend UI will be implemented in React
+
+Backend requirements:
+Non-functional:
+Use fast, scalable, state of the art but not overengineered context engineering techniques
+
+Functional:
+Route prompts to the LLM API, using categories' context summary appropriately, and return responses to the client app
+Update categories as requested by the user
+Store categories for each chat
+Return a list of the categories
+For each category, keep track of and be able to return its chat history
+For each category, maintain a context summary that can be used in LLM prompts

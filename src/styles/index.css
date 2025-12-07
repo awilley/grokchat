@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-primary text-textPrimary font-sans;
+}
+
+a {
+  @apply text-grokBlue hover:text-grokGreen transition-colors;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-accent;
+}
+
+.glass-panel {
+  @apply border border-white/10 bg-white/5 backdrop-blur-lg;
+}
