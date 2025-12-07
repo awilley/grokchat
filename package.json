@@ -11,6 +11,8 @@
     "dev:server": "ts-node-esm server/index.ts"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.22.3",
+    "better-sqlite3": "^12.5.0",
     "clsx": "^2.1.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -23,6 +25,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/react": "^18.2.47",

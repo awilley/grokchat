@@ -112,7 +112,7 @@ function synthesizeAssistantReply(prompt: string, category: ContextCategory): st
 }
 
 export default function App() {
-    const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [categories, setCategories] = useState<ContextCategory[]>(initialContextCategories);
     const [isAssistantTyping, setAssistantTyping] = useState(false);
     const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -121,8 +121,80 @@ export default function App() {
     const [searchQuery, setSearchQuery] = useState('');
     const [grokStatusMessage, setGrokStatusMessage] = useState<string | null>(null);
     const [composerTags, setComposerTags] = useState<string[]>(initialContextCategories[0] ? [initialContextCategories[0].id] : []);
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    const [historyLoaded, setHistoryLoaded] = useState(false);
 
     const grokConfigured = useMemo(() => grokIsConfigured(), []);
+
+    // Load categories from DB on mount
+    useEffect(() => {
+        fetch('/api/categories')
+            .then(res => res.ok ? res.json() : Promise.reject('Failed to load categories'))
+            .then(data => {
+                if (data.categories?.length > 0) {
+                    setCategories(data.categories);
+                    if (!activeCategoryId && data.categories[0]) {
+                        setComposerTags([data.categories[0].id]);
+                    }
+                }
+            })
+            .catch(error => {
+                console.warn('Could not load categories from DB, using defaults', error);
+            });
+    }, [activeCategoryId]);
+
+    // Restore chat history from DB if session exists
+    useEffect(() => {
+        const storedSessionId = localStorage.getItem('grokchat-session-id');
+        if (storedSessionId) {
+            console.log('[History] Restoring session:', storedSessionId);
+            setSessionId(storedSessionId);
+            fetch(`/api/messages/${storedSessionId}?limit=100`)
+                .then(res => res.ok ? res.json() : Promise.reject('Failed to load messages'))
+                .then(data => {
+                    console.log('[History] Loaded messages from DB:', data.messages?.length || 0);
+                    if (data.messages?.length > 0) {
+                        const systemMsg = initialMessages.find(m => m.role === 'system');
+                        const restoredMessages = data.messages
+                            .reverse() // DB returns DESC, reverse to ASC
+                            .filter((msg: any) => msg.role !== 'system') // Filter out system messages from DB
+                            .map((msg: any) => ({
+                                id: msg.id,
+                                role: msg.role,
+                                content: msg.content,
+                                timestamp: msg.timestamp,
+                                tags: msg.tags ? JSON.parse(msg.tags) : undefined
+                            }));
+                        // Prepend system message if it exists
+                        const finalMessages = systemMsg ? [systemMsg, ...restoredMessages] : restoredMessages;
+                        console.log('[History] Setting', finalMessages.length, 'messages');
+                        setMessages(finalMessages);
+                        setHistoryLoaded(true);
+                    } else {
+                        // No history, use defaults
+                        setMessages(initialMessages);
+                        setHistoryLoaded(true);
+                    }
+                })
+                .catch(error => {
+                    console.warn('Could not restore chat history, using defaults', error);
+                    setMessages(initialMessages);
+                    setHistoryLoaded(true);
+                });
+        } else {
+            // No session, use defaults
+            console.log('[History] No stored session, using defaults');
+            setMessages(initialMessages);
+            setHistoryLoaded(true);
+        }
+    }, []);
+
+    // Persist session ID to localStorage
+    useEffect(() => {
+        if (sessionId) {
+            localStorage.setItem('grokchat-session-id', sessionId);
+        }
+    }, [sessionId]);
 
     const activeCategory = useMemo(
         () => categories.find(category => category.id === activeCategoryId) ?? null,
@@ -161,6 +233,8 @@ export default function App() {
                 ).map(message => ({ role: message.role, content: message.content }));
 
                 let usedMemories: { text: string; type: string; tags: string[] }[] = [];
+                let ragDocs: { text: string }[] = [];
+                let currentSessionId = sessionId;
 
                 try {
                     const response = await fetch('/api/chat', {
@@ -174,8 +248,17 @@ export default function App() {
                     });
 
                     if (response.ok) {
-                        const data = await response.json() as { usedMemories?: { text: string; type: string; tags: string[] }[] };
+                        const data = await response.json() as { 
+                            usedMemories?: { text: string; type: string; tags: string[] }[];
+                            ragDocs?: { text: string }[];
+                            sessionId?: string;
+                        };
                         usedMemories = data.usedMemories ?? [];
+                        ragDocs = data.ragDocs ?? [];
+                        if (data.sessionId) {
+                            currentSessionId = data.sessionId;
+                            setSessionId(data.sessionId);
+                        }
                     }
                 } catch (error) {
                     console.warn('Mem0 /api/chat call failed, continuing without memories', error);
@@ -185,15 +268,19 @@ export default function App() {
                     ? usedMemories.map(memory => `- (${memory.type}) ${memory.text}`).join('\n')
                     : 'None yet.';
 
+                const knowledgeSection = ragDocs.length
+                    ? ragDocs.map(doc => `- ${doc.text}`).join('\n')
+                    : 'None available.';
+
                 const grokMessages = [
                     systemPrompt
                         ? {
                             role: systemPrompt.role,
-                            content: `${systemPrompt.content}\n\nKnown about this user and context (from memory):\n${memorySection}`
+                            content: `${systemPrompt.content}\n\nKnown about this user and context (from memory):\n${memorySection}\n\nRelevant knowledge base:\n${knowledgeSection}`
                         }
                         : {
                             role: 'system' as const,
-                            content: `You are Grok, an adaptive operations co-pilot. Maintain a resilient tone and weave in relevant context signals when responding.\n\nKnown about this user and context (from memory):\n${memorySection}`
+                            content: `You are Grok, an adaptive operations co-pilot. Maintain a resilient tone and weave in relevant context signals when responding.\n\nKnown about this user and context (from memory):\n${memorySection}\n\nRelevant knowledge base:\n${knowledgeSection}`
                         },
                     ...trimmedConversation.map(message => ({ role: message.role, content: message.content })),
                     { role: 'user' as const, content }
@@ -220,6 +307,19 @@ export default function App() {
 
                 setMessages(prev => [...prev, assistantMessage]);
                 setGrokStatusMessage(null);
+
+                // Persist assistant response to DB
+                if (currentSessionId) {
+                    fetch('/api/chat/response', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sessionId: currentSessionId,
+                            content: assistantText,
+                            tags: resolvedTags
+                        })
+                    }).catch(error => console.warn('Failed to persist assistant response', error));
+                }
             } catch (error) {
                 console.error('Grok completion failed', error);
                 const fallback = synthesizeAssistantReply(content, replyCategory);
